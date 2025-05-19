@@ -21,16 +21,32 @@ namespace DMS_Viewer
         bool sortAscending = true;
 
         private bool IsRunningMono = false;
-        private DMSTable viewerTable;
+        private List<DMSTable> viewerTables;
         private SqliteConnection tableConnection = null;
         private List<DMSRow> filteredRows = null;
+
+        public DataViewer(CombinedTableSet tableSet, string ConnectedDBName)
+        {
+            InitializeComponent();
+
+            typeof(DataGridView).InvokeMember("DoubleBuffered", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.SetProperty, null, this.dataGridView1, new object[] { true });
+
+            viewerTables = tableSet.Tables;
+            this.Text = "Data Viewer: " + tableSet.Name;
+            InitDataTable();
+            //FillDataTable();
+            dataGridView1.RowCount = viewerTables.Sum(t=>t.Rows.Count);
+
+            IsRunningMono = Type.GetType("Mono.Runtime") != null;
+        }
+
         public DataViewer(DMSTable table, string ConnectedDBName)
         {
             InitializeComponent();
 
             typeof(DataGridView).InvokeMember("DoubleBuffered", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.SetProperty, null, this.dataGridView1, new object[] { true });
 
-            viewerTable = table;
+            viewerTables = new List<DMSTable>() { table };
             this.Text = "Data Viewer: " + table.DBName;
             if (table.CompareResult.Status!= DMSCompareStatus.SAME && ConnectedDBName.Length > 0)
             {
@@ -38,7 +54,7 @@ namespace DMS_Viewer
             }
             InitDataTable();
             //FillDataTable();
-            dataGridView1.RowCount = viewerTable.Rows.Count;
+            dataGridView1.RowCount = viewerTables.Sum(t=>t.Rows.Count);
 
             IsRunningMono = Type.GetType("Mono.Runtime") != null;
         }
@@ -54,21 +70,36 @@ namespace DMS_Viewer
             dataGridView1.DataSource = null;
             dataGridView1.Rows.Clear();
             dataGridView1.Columns.Clear();
-
-            foreach (var col in viewerTable.Columns)
+            dataGridView1.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.AutoSizeToAllHeaders;
+            foreach (var col in viewerTables[0].Columns)
             {
-                dataGridView1.Columns.Add(col.Name, col.Name);
+                var columnIndex = dataGridView1.Columns.Add(col.Name, col.Name);
+
+                if (viewerTables[0].Rows[0].CompareResult.AddedIndexes.Contains(columnIndex))
+                {
+                    dataGridView1.Columns[columnIndex].HeaderCell.Style.BackColor = Color.LawnGreen;
+                }
+
+                if (viewerTables[0].Rows[0].CompareResult.DeletedIndexes.Contains(columnIndex))
+                {
+                    dataGridView1.Columns[columnIndex].HeaderCell.Style.BackColor = Color.LightCoral;
+                }
+
             }
 
-            dataGridView1.RowCount = viewerTable.Rows.Count;
+            dataGridView1.RowCount = viewerTables.Sum(t => t.Rows.Count);
 
-            for(var x = 0; x < dataGridView1.RowCount;x++)
+            /* mark each row that starts a new table via headercell */
+            var curIndex = 0;
+            foreach (var table in viewerTables)
             {
-                //dataGridView1.Rows[x].HeaderCell.Value = $"{x+1}";
+                if (table.Rows.Count == 0) continue;
+                dataGridView1.Rows[curIndex].HeaderCell.Value = "-->";
+                dataGridView1.Rows[curIndex].HeaderCell.ToolTipText = "WHRE " + table.WhereClause;
+                curIndex += table.Rows.Count;
             }
 
         }
-
 
         private void dataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
@@ -139,12 +170,37 @@ namespace DMS_Viewer
             }
         }
 
+        private DMSRow GetRowForIndex(int index)
+        {
+            var tableIndex = 0;
+            var rowIndex = index;
+            while (rowIndex >= viewerTables[tableIndex].Rows.Count)
+            {
+                rowIndex -= viewerTables[tableIndex].Rows.Count;
+                tableIndex++;
+            }
+
+            return viewerTables[tableIndex].Rows[rowIndex];
+        }
+
+        private (DMSTable,DMSRow) GetTableAndRowForIndex(int index)
+        {
+            var tableIndex = 0;
+            var rowIndex = index;
+            while (rowIndex >= viewerTables[tableIndex].Rows.Count)
+            {
+                rowIndex -= viewerTables[tableIndex].Rows.Count;
+                tableIndex++;
+            }
+
+            return (viewerTables[tableIndex],viewerTables[tableIndex].Rows[rowIndex]);
+        }
         private void CopyAsInsert_Click(object sender, EventArgs e)
         {
             StringBuilder sb = new StringBuilder();
             foreach (DataGridViewRow row in dataGridView1.SelectedRows)
             {
-                DMSRow curRow = viewerTable.Rows[row.Index];
+                DMSRow curRow = GetRowForIndex(row.Index);
                 sb.Append("-- INSERT INTO ").Append(curRow.OwningTable.DBName).Append(" (");
                 foreach(var c in curRow.OwningTable.Columns)
                 {
@@ -165,8 +221,11 @@ namespace DMS_Viewer
         {
             var menuItem = (MenuItem)sender;
             var hitTest = (DataGridView.HitTestInfo)menuItem.Tag;
-            var selectedColumn = viewerTable.Columns[hitTest.ColumnIndex];
-            viewerTable.DropColumn(selectedColumn);
+            var selectedColumn = viewerTables[0].Columns[hitTest.ColumnIndex];
+            foreach(var table in viewerTables)
+            {
+                table.DropColumn(selectedColumn);
+            }
             RedrawTable();
         }
 
@@ -182,8 +241,10 @@ namespace DMS_Viewer
             if (newCol != null)
             {
                 var defVal = opts.defaultValue;
-
-                viewerTable.AddColumn(newCol, viewerTable.Columns[hitTest.ColumnIndex], defVal);
+                foreach(var table in viewerTables)
+                {
+                    table.AddColumn(newCol, table.Columns[hitTest.ColumnIndex], defVal);
+                }
                 RedrawTable();
             }
 
@@ -200,8 +261,10 @@ namespace DMS_Viewer
 
                 foreach (DataGridViewRow row in dataGridView1.SelectedRows)
                 {
-                    DMSRow curRow = viewerTable.Rows[row.Index];
-                    viewerTable.Rows.Remove(curRow);
+                    var tableAndRow = GetTableAndRowForIndex(row.Index);
+                    DMSTable curTable = tableAndRow.Item1;
+                    DMSRow curRow = tableAndRow.Item2;
+                    curTable.Rows.Remove(curRow);
                 }
                 RedrawTable();
             } 
@@ -214,7 +277,7 @@ namespace DMS_Viewer
 
             var content = dataGridView1.Rows[hitTest.RowIndex].Cells[hitTest.ColumnIndex].Value.ToString();
 
-            DMSRow curRow = viewerTable.Rows[hitTest.RowIndex];
+            DMSRow curRow = GetRowForIndex(hitTest.RowIndex);
 
             new LongDataViewer(content, this, curRow, hitTest.ColumnIndex).ShowDialog(this);
             
@@ -223,13 +286,16 @@ namespace DMS_Viewer
         private void dataGridView1_RowPrePaint(object sender, DataGridViewRowPrePaintEventArgs e)
         {
             Color backColor = Color.White;
-            switch (viewerTable.Rows[e.RowIndex].CompareResult.Status)
+            switch (GetRowForIndex(e.RowIndex).CompareResult.Status)
             {
                 case DMSCompareStatus.NEW:
                     backColor = Color.LawnGreen;
                     break;
                 case DMSCompareStatus.UPDATE:
                     backColor = Color.Yellow;
+                    break;
+                case DMSCompareStatus.MISSING:
+                    backColor = Color.LightCoral;
                     break;
             }
 
@@ -268,7 +334,7 @@ namespace DMS_Viewer
                 }
                 else
                 {
-                    e.Value = viewerTable.Rows[e.RowIndex].GetStringValue(e.ColumnIndex);
+                    e.Value = GetRowForIndex(e.RowIndex).GetStringValue(e.ColumnIndex);
                 }
             }
             catch (Exception ex) { }
@@ -297,11 +363,17 @@ namespace DMS_Viewer
                 /* sort the rows of the viewer table by the selected colum index */
                 if (sortAscending)
                 {
-                    viewerTable.Rows = viewerTable.Rows.OrderBy(r => r.GetStringValue(sortColumn)).ToList();
+                    foreach(var table in viewerTables)
+                    {
+                        table.Rows = table.Rows.OrderBy(r => r.GetStringValue(sortColumn)).ToList();
+                    }
                 }
                 else
                 {
-                    viewerTable.Rows = viewerTable.Rows.OrderByDescending(r => r.GetStringValue(sortColumn)).ToList();
+                    foreach(var table in viewerTables)
+                    {
+                        table.Rows = table.Rows.OrderByDescending(r => r.GetStringValue(sortColumn)).ToList();
+                    }
                 }
 
                 RedrawTable();
@@ -314,13 +386,13 @@ namespace DMS_Viewer
             {
                 progressBar1.Visible = true;
                 progressBar1.Style = ProgressBarStyle.Marquee;
-                tableConnection = await SQLConverter.DMSTableToSQLAsync(viewerTable, null, new CancellationToken());
+                tableConnection = await SQLConverter.DMSTableToSQLAsync(viewerTables, null, new CancellationToken());
                                
                 progressBar1.Visible = false;
 
             }
 
-            var result = await SQLConverter.ExecuteQuery(tableConnection, $"SELECT __rowHash FROM {viewerTable.DBName} WHERE {textBox1.Text};");
+            var result = await SQLConverter.ExecuteQuery(tableConnection, $"SELECT __rowHash FROM {viewerTables[0].DBName} WHERE {textBox1.Text};");
 
             var resultHashes = new List<long>();
 
@@ -328,8 +400,7 @@ namespace DMS_Viewer
             {
                 resultHashes.Add(result.GetInt64(0));
             }
-
-            filteredRows = viewerTable.Rows.Where(r => resultHashes.Contains(r.RowHash)).ToList();
+            filteredRows = viewerTables.SelectMany(t => t.Rows).Where(r => resultHashes.Contains(r.RowHash)).ToList();
             dataGridView1.SuspendLayout();
             dataGridView1.RowCount = 0;
             InitDataTable();
@@ -341,42 +412,158 @@ namespace DMS_Viewer
 
         private void button1_Click(object sender, EventArgs e)
         {
+            if (filteredRows == null)
+            {
+                return;
+            }
             filteredRows.Clear();
             filteredRows = null;
             InitDataTable();
-            dataGridView1.RowCount = viewerTable.Rows.Count();
+            dataGridView1.RowCount = viewerTables.Sum(t => t.Rows.Count);
         }
 
         private void dataGridView1_CellPainting(object sender, DataGridViewCellPaintingEventArgs e)
         {
             // Check if this is the cell you want to customize (for example, row 1, column 1)
             if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
-            {
+            {   
+                var tableAndRow = GetTableAndRowForIndex(e.RowIndex);
+                var curTable = tableAndRow.Item1;
+                var curRow = tableAndRow.Item2;
+                
+                /* If curRow is the last row of the table... */
+                if (curTable.Rows.IndexOf(curRow) == curTable.Rows.Count - 1)
+                {
+                    // Paint the cell normally first
+                    e.Paint(e.CellBounds, DataGridViewPaintParts.All);
+
+                    using (Pen separatorPen = new Pen(Color.Gray, 2)) // Choose the color and thickness of the separator
+                    {
+                        int y = e.CellBounds.Bottom - 1;
+                        e.Graphics.DrawLine(separatorPen, e.CellBounds.Left, y, e.CellBounds.Right, y);
+                    }
+
+                    // Prevent default cell painting
+                    e.Handled = true;
+                }
+
+
                 /* if this rows compare status is not update, do nothing */
-                if (viewerTable.Rows[e.RowIndex].CompareResult.Status != DMSCompareStatus.UPDATE)
+                if (curRow.CompareResult.Status != DMSCompareStatus.UPDATE && curRow.CompareResult.Status != DMSCompareStatus.COLUMNS_CHANGED)
                 {
                     return;
                 }
 
                 /* if this cell in the row is one of the changed indexes, paint it red */
-                if (viewerTable.Rows[e.RowIndex].CompareResult.ChangedIndexes.Contains(e.ColumnIndex))
+                if (curRow.CompareResult.ChangedIndexes != null)
                 {
-                    // Paint the cell normally first
-                    e.Paint(e.CellBounds, DataGridViewPaintParts.All);
-
-                    // Define the red border
-                    using (Pen redPen = new Pen(Color.Red, 2))
+                    if (curRow.CompareResult.ChangedIndexes.Contains(e.ColumnIndex))
                     {
-                        Rectangle rect = e.CellBounds;
-                        rect.Width -= 1;
-                        rect.Height -= 1;
+                        // Paint the cell normally first
+                        e.Paint(e.CellBounds, DataGridViewPaintParts.All);
 
-                        // Draw the red border around the cell content
-                        e.Graphics.DrawRectangle(redPen, rect);
+                        // Define the red border
+                        using (Pen redPen = new Pen(Color.Red, 2))
+                        {
+                            Rectangle rect = e.CellBounds;
+                            rect.Width -= 1;
+                            rect.Height -= 1;
+
+                            // Draw the red border around the cell content
+                            e.Graphics.DrawRectangle(redPen, rect);
+                        }
+
+                        // Prevent default cell painting
+                        e.Handled = true;
                     }
+                }
 
-                    // Prevent default cell painting
-                    e.Handled = true;
+
+
+                /* if this cell in the row is one of the deleted indexes, fill it with light coral */
+                if (curRow.CompareResult.DeletedIndexes != null)
+                {
+                    if (curRow.CompareResult.DeletedIndexes.Contains(e.ColumnIndex))
+                    {
+                        // Paint the cell normally first
+                        e.Paint(e.CellBounds, DataGridViewPaintParts.All);
+
+                        // Define the red border
+                        using (SolidBrush redBrush = new SolidBrush(Color.LightCoral))
+                        {
+                            Rectangle rect = e.CellBounds;
+                            rect.Width -= 1;
+                            rect.Height -= 1;
+
+                            // Draw the red border around the cell content
+                            e.Graphics.FillRectangle(redBrush, rect);
+                        }
+
+                        // Prevent default cell painting
+                        e.Handled = true;
+                    }
+                }
+
+                if (curRow.CompareResult.AddedIndexes != null)
+                {
+                    if (curRow.CompareResult.AddedIndexes.Contains(e.ColumnIndex))
+                    {
+                        // Paint the cell normally first
+                        e.Paint(e.CellBounds, DataGridViewPaintParts.All);
+
+                        // Define the red border
+                        using (SolidBrush green = new SolidBrush(Color.LawnGreen))
+                        {
+                            Rectangle rect = e.CellBounds;
+                            rect.Width -= 1;
+                            rect.Height -= 1;
+
+                            // Draw the red border around the cell content
+                            e.Graphics.FillRectangle(green, rect);
+                        }
+
+                        // Prevent default cell painting
+                        e.Handled = true;
+                    }
+                }
+                
+            }
+            else
+            {
+                /* if this is a header cell */
+                if(e.RowIndex == -1)
+                {
+                    if (viewerTables[0].Rows[0].CompareResult.AddedIndexes.Contains(e.ColumnIndex))
+                    {
+                        // Define the red border
+                        using (SolidBrush redBrush = new SolidBrush(Color.LawnGreen))
+                        {
+                            Rectangle rect = e.CellBounds;
+                            rect.Width -= 1;
+                            rect.Height -= 1;
+
+                            // Draw the red border around the cell content
+                            e.Graphics.FillRectangle(redBrush, rect);
+                        }
+                        e.Paint(e.CellBounds, DataGridViewPaintParts.ContentForeground);
+                        // Prevent default cell painting
+                        e.Handled = true;
+                    } else if (viewerTables[0].Rows[0].CompareResult.DeletedIndexes.Contains(e.ColumnIndex))
+                    {
+                        // Define the red border
+                        using (SolidBrush redBrush = new SolidBrush(Color.LightCoral))
+                        {
+                            Rectangle rect = e.CellBounds;
+                            rect.Width -= 1;
+                            rect.Height -= 1;
+
+                            // Draw the red border around the cell content
+                            e.Graphics.FillRectangle(redBrush, rect);
+                        }
+                        e.Paint(e.CellBounds, DataGridViewPaintParts.ContentForeground);
+                        // Prevent default cell painting
+                        e.Handled = true;
+                    }
                 }
             }
         }

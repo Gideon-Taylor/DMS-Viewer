@@ -60,6 +60,7 @@ namespace DMS_Viewer
                         if (table.Rows.Where(r => r.CompareResult.Status == DMSCompareStatus.UPDATE).Count() > 0)
                         {
                             table.CompareResult.Status = DMSCompareStatus.UPDATE;
+                            table.CompareResult.ChangedIndexes = new List<int>();
                         }
                         else
                         {

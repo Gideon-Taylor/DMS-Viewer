@@ -141,6 +141,7 @@
     <Compile Include="LongDataViewer.Designer.cs">
       <DependentUpon>LongDataViewer.cs</DependentUpon>
     </Compile>
+    <Compile Include="OracleCompareHelper.cs" />
     <Compile Include="OSXClipboard.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

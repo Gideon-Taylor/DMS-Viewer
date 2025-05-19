@@ -224,7 +224,16 @@ namespace DMS_Viewer
 
         private void dataViewer_Click(object sender, EventArgs e)
         {
-            var viewer = new DataViewer(tableList.SelectedItems[0].Tag as DMSTable, ConnectedDBName);
+            CombinedTableSet tableSet = new CombinedTableSet();
+            tableSet.Tables = dmsFile.Tables.Where(t => t.Name == tableList.SelectedItems[0].Text).ToList();
+
+            var viewer = new DataViewer(tableSet, ConnectedDBName);
+
+            /*OracleHelper h = new OracleHelper();
+            var table = tableList.SelectedItems[0].Tag as DMSTable;
+            var statement = h.CreateSQLStatementForTable(table, dbConn);
+            var result = h.CheckRow(table, statement, table.Rows[0]);*/
+
             viewer.ShowDialog(this);
             DrawColumns();
         }

@@ -36,6 +36,9 @@ namespace DMS_Viewer
             try
             {
                 Connection.Open();
+                /* Set the schema to the user's schema. use binds */
+                OracleCommand cmd = new OracleCommand("ALTER SESSION SET CURRENT_SCHEMA = " + txtSchema.Text, Connection);
+                cmd.ExecuteNonQuery();
                 DBName = txtDBName.Text;
                 this.DialogResult = DialogResult.OK;
                 this.Hide();
@@ -43,6 +46,11 @@ namespace DMS_Viewer
             {
                 MessageBox.Show("Failed to connect, please check your information and ensure TNS_ADMIN environment variable is set properly.");
             }
+        }
+
+        private void label5_Click(object sender, EventArgs e)
+        {
+
         }
     }
 }

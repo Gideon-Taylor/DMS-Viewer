@@ -30,9 +30,10 @@
         {
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
             this.lstRight = new System.Windows.Forms.ListView();
+            this.columnHeader2 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.lstLeft = new System.Windows.Forms.ListView();
-            this.btnCompareRight = new System.Windows.Forms.Button();
-            this.btnCompareToLeft = new System.Windows.Forms.Button();
+            this.columnHeader1 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.btnCompareSelected = new System.Windows.Forms.Button();
             this.btnViewDataLeft = new System.Windows.Forms.Button();
             this.btnViewDataRight = new System.Windows.Forms.Button();
             this.lblLeft = new System.Windows.Forms.Label();
@@ -43,8 +44,6 @@
             this.lblRightRows = new System.Windows.Forms.Label();
             this.progressBar1 = new System.Windows.Forms.ProgressBar();
             this.saveFileDialog1 = new System.Windows.Forms.SaveFileDialog();
-            this.columnHeader1 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.columnHeader2 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.SuspendLayout();
             // 
             // openFileDialog1
@@ -66,6 +65,11 @@
             this.lstRight.SelectedIndexChanged += new System.EventHandler(this.lstRight_SelectedIndexChanged);
             this.lstRight.MouseClick += new System.Windows.Forms.MouseEventHandler(this.lstRight_MouseClick);
             // 
+            // columnHeader2
+            // 
+            this.columnHeader2.Text = "Table Name";
+            this.columnHeader2.Width = 217;
+            // 
             // lstLeft
             // 
             this.lstLeft.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
@@ -81,27 +85,21 @@
             this.lstLeft.SelectedIndexChanged += new System.EventHandler(this.lstLeft_SelectedIndexChanged);
             this.lstLeft.MouseClick += new System.Windows.Forms.MouseEventHandler(this.lstLeft_MouseClick);
             // 
+            // columnHeader1
+            // 
+            this.columnHeader1.Text = "Table Name";
+            this.columnHeader1.Width = 213;
+            // 
             // btnCompareRight
             // 
-            this.btnCompareRight.Enabled = false;
-            this.btnCompareRight.Location = new System.Drawing.Point(63, 415);
-            this.btnCompareRight.Name = "btnCompareRight";
-            this.btnCompareRight.Size = new System.Drawing.Size(101, 23);
-            this.btnCompareRight.TabIndex = 28;
-            this.btnCompareRight.Text = "Compare to Right";
-            this.btnCompareRight.UseVisualStyleBackColor = true;
-            this.btnCompareRight.Click += new System.EventHandler(this.btnCompareRight_Click);
-            // 
-            // btnCompareToLeft
-            // 
-            this.btnCompareToLeft.Enabled = false;
-            this.btnCompareToLeft.Location = new System.Drawing.Point(337, 415);
-            this.btnCompareToLeft.Name = "btnCompareToLeft";
-            this.btnCompareToLeft.Size = new System.Drawing.Size(101, 23);
-            this.btnCompareToLeft.TabIndex = 29;
-            this.btnCompareToLeft.Text = "Compare to Left";
-            this.btnCompareToLeft.UseVisualStyleBackColor = true;
-            this.btnCompareToLeft.Click += new System.EventHandler(this.Button2_Click);
+            this.btnCompareSelected.Enabled = false;
+            this.btnCompareSelected.Location = new System.Drawing.Point(189, 415);
+            this.btnCompareSelected.Name = "btnCompareRight";
+            this.btnCompareSelected.Size = new System.Drawing.Size(133, 23);
+            this.btnCompareSelected.TabIndex = 28;
+            this.btnCompareSelected.Text = "Compare Selected";
+            this.btnCompareSelected.UseVisualStyleBackColor = true;
+            this.btnCompareSelected.Click += new System.EventHandler(this.btnCompareRight_Click);
             // 
             // btnViewDataLeft
             // 
@@ -188,16 +186,6 @@
             this.progressBar1.Size = new System.Drawing.Size(485, 16);
             this.progressBar1.TabIndex = 39;
             // 
-            // columnHeader1
-            // 
-            this.columnHeader1.Text = "Table Name";
-            this.columnHeader1.Width = 213;
-            // 
-            // columnHeader2
-            // 
-            this.columnHeader2.Text = "Table Name";
-            this.columnHeader2.Width = 217;
-            // 
             // DATCompareDialog
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -212,8 +200,7 @@
             this.Controls.Add(this.lblLeft);
             this.Controls.Add(this.btnViewDataRight);
             this.Controls.Add(this.btnViewDataLeft);
-            this.Controls.Add(this.btnCompareToLeft);
-            this.Controls.Add(this.btnCompareRight);
+            this.Controls.Add(this.btnCompareSelected);
             this.Controls.Add(this.lstLeft);
             this.Controls.Add(this.lstRight);
             this.Name = "DATCompareDialog";
@@ -229,8 +216,7 @@
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
         private System.Windows.Forms.ListView lstRight;
         private System.Windows.Forms.ListView lstLeft;
-        private System.Windows.Forms.Button btnCompareRight;
-        private System.Windows.Forms.Button btnCompareToLeft;
+        private System.Windows.Forms.Button btnCompareSelected;
         private System.Windows.Forms.Button btnViewDataLeft;
         private System.Windows.Forms.Button btnViewDataRight;
         private System.Windows.Forms.Label lblLeft;
