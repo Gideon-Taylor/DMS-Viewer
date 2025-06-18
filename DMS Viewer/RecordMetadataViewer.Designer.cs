@@ -57,6 +57,8 @@
             this.btnSave = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
             this.button2 = new System.Windows.Forms.Button();
+            this.txtTablespace = new System.Windows.Forms.TextBox();
+            this.label14 = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // label1
@@ -282,12 +284,13 @@
             // 
             // btnSave
             // 
-            this.btnSave.Location = new System.Drawing.Point(127, 375);
+            this.btnSave.Location = new System.Drawing.Point(127, 392);
             this.btnSave.Name = "btnSave";
             this.btnSave.Size = new System.Drawing.Size(104, 23);
             this.btnSave.TabIndex = 30;
             this.btnSave.Text = "Save Changes";
             this.btnSave.UseVisualStyleBackColor = true;
+            this.btnSave.Click += new System.EventHandler(this.btnSave_Click);
             // 
             // button1
             // 
@@ -307,11 +310,30 @@
             this.button2.Text = "...";
             this.button2.UseVisualStyleBackColor = true;
             // 
+            // txtTablespace
+            // 
+            this.txtTablespace.Location = new System.Drawing.Point(170, 366);
+            this.txtTablespace.MaxLength = 10;
+            this.txtTablespace.Name = "txtTablespace";
+            this.txtTablespace.Size = new System.Drawing.Size(89, 20);
+            this.txtTablespace.TabIndex = 34;
+            // 
+            // label14
+            // 
+            this.label14.AutoSize = true;
+            this.label14.Location = new System.Drawing.Point(28, 369);
+            this.label14.Name = "label14";
+            this.label14.Size = new System.Drawing.Size(66, 13);
+            this.label14.TabIndex = 33;
+            this.label14.Text = "Tablespace:";
+            // 
             // RecordMetadataViewer
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(371, 410);
+            this.ClientSize = new System.Drawing.Size(371, 457);
+            this.Controls.Add(this.txtTablespace);
+            this.Controls.Add(this.label14);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.btnSave);
@@ -383,5 +405,7 @@
         private System.Windows.Forms.Button btnSave;
         private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button button2;
+        private System.Windows.Forms.TextBox txtTablespace;
+        private System.Windows.Forms.Label label14;
     }
 }
