@@ -47,12 +47,6 @@ namespace DMS_Viewer
                 Console.WriteLine("    Total rows: " + dmsFile.Tables.Sum(t => t.Rows.Count));
                 foreach (var table in dmsFile.Tables)
                 {
-
-                    if (table.Rows.Count == 0)
-                    {
-                        continue;
-                    }
-
                     if (results.ContainsKey(table.Name) == false)
                     {
                         results.Add(table.Name, new List<string>());
