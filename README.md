@@ -117,6 +117,39 @@ Defaults must be strings or JSON null. Overrides take precedence over XML and
 inference. Unknown, duplicate or unused overrides fail rather than being ignored;
 overrides apply only to missing fields. A literal space is not a valid date default.
 
+### Agent skill (Codex, Claude Code, or another Markdown-capable agent)
+
+The source skill is [skills/dms-sync-schema/SKILL.md](skills/dms-sync-schema/SKILL.md).
+Its instructions and Python helper require no vendor-specific SDK, plugin, account,
+or global configuration. Point your agent at that file in the checkout, or copy
+the `skills/dms-sync-schema` directory into the skill location supported by your
+agent. The source distribution does not commit compiled binaries.
+
+Build the CLI first using the procedure below. The helper finds an ancestor
+checkout's `DMS.Cli/bin/Release/DMS.Cli.exe` even when invoked from a different
+working directory. If you copied the skill outside the checkout, pass `--cli` or
+set `DMS_CLI` to the absolute executable path. Precedence is `--cli`, then
+`DMS_CLI`, then checkout discovery. Keep the EXE with its built dependencies.
+Windows and .NET Framework 4.8 are required for the current CLI; Python 3 runs
+the helper. Agent independence does not imply a cross-platform CLI.
+
+```powershell
+# Preview, using the CLI built in this checkout
+python skills/dms-sync-schema/scripts/sync_dat.py --input original.dat --project project.XML
+
+# Save and verify a separate corrected file, with a JSON report
+python skills/dms-sync-schema/scripts/sync_dat.py --input original.dat --project project.XML --apply --output corrected.dat --report result.json
+
+# A skill copied outside the repository can use an explicit CLI path
+python path/to/copied-skill/scripts/sync_dat.py --cli path/to/DMS.Cli.exe --input original.dat --project project.XML
+```
+
+The helper previews first, checks input hashes, then rechecks a saved copy for zero
+remaining additions. It reports an already-complete input without creating a
+duplicate. Existing metadata/order differences remain unapplied. `--overrides`
+uses the same JSON format described above. Output and report files are never
+overwritten. Customer exports, project XML and reports belong outside the repo.
+
 ### Building and testing
 
 Install Visual Studio Build Tools with .NET desktop build tools and the .NET 4.8
@@ -129,6 +162,7 @@ msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release
 DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
 python tests/cli_integration.py
 python tests/schema_sync_integration.py
+python tests/skill_integration.py
 ```
 
 The automated tests generate synthetic DAT data; customer exports are not fixtures.
