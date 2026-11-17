@@ -5,19 +5,18 @@ description: Compare and correct PeopleSoft Data Mover DAT exports against App D
 
 # DMS Schema Sync
 
-Use DMS CLI through `scripts/sync_dat.py`. These instructions and the Python helper
-are agent independent; no agent SDK, account, plugin or vendor-specific tool is
-required. The current CLI requires Windows and .NET Framework 4.8; the helper
-requires Python 3. See the [repository build instructions](../../README.md#building-and-testing)
-when using a source checkout.
+Use `DMS.Cli.exe` directly. It handles preview validation, input fingerprints,
+verified saves, post-save schema comparison and JSON reports in C#. End users need
+Windows and .NET Framework 4.8, with no Python, agent SDK or vendor-specific plugin.
+See the [repository build instructions](../../README.md#building-and-testing) for
+building from source. Python is used only by development tests.
 
-The helper finds `DMS.Cli/bin/Release/DMS.Cli.exe` in an ancestor checkout. If this
-skill was copied into an agent's skill directory, pass `--cli '<DMS.Cli.exe>'` or
-set the `DMS_CLI` environment variable to the executable's absolute path. Precedence
-is `--cli`, then `DMS_CLI`, then the checkout's Release build. Explicit paths never
-silently fall back. Keep the executable with its built DLLs; do not copy just the
-EXE. An optional packaged runtime is also supported if present, with manifest
-hash verification. The repository skill contains source only, not compiled binaries.
+Locate the executable supplied by the user, a built checkout at
+`DMS.Cli/bin/Release/DMS.Cli.exe`, or a packaged runtime alongside this skill at
+`tools/dms-cli/DMS.Cli.exe`. Keep it with its built DLLs; do not copy just the EXE.
+When this skill is copied into an agent's skill folder, point the agent at the
+actual executable. No launcher, `--cli` option, or agent-specific configuration is
+required. The repository skill contains instructions only, not compiled binaries.
 
 ## Inputs and scope
 
@@ -45,28 +44,37 @@ The comparison uses actual XML record definitions, not saved comparison flags:
 
 ## Run
 
-Resolve this skill's directory and invoke the helper with argument-safe shell quoting:
+Invoke the executable with argument-safe shell quoting. For example, in PowerShell:
 
 ```powershell
-python '<skill-dir>\scripts\sync_dat.py' --input '<source.dat>' --project '<project.XML>' --report '<new-preview.json>'
+$cli = '<absolute-path>\DMS.Cli.exe'
+& $cli sync-schema --input '<source.dat>' --project '<project.XML-or-folder>' --dry-run --report '<new-preview.json>'
 ```
 
-The helper resolves the CLI and runs `sync-schema --dry-run`.
-Read the JSON `preview.changes`, `preview.differences`, `preview.skipped`, and
-`preview.unresolved`. Diagnostics go to stderr; stdout contains one JSON object.
-Exit code 0 means success, 1 means a failed or unresolved operation.
+Read the JSON `changes`, `differences`, `skipped`, and `unresolved` from stdout or
+the optional report. Diagnostics go to stderr; stdout is one UTF-8 JSON object.
+Exit code 0 means success, 1 means a failed or unresolved operation. A preview
+validates the additions in memory; it never creates a DAT.
 
 For a correction request with resolved changes:
 
 ```powershell
-python '<skill-dir>\scripts\sync_dat.py' --input '<source.dat>' --project '<project.XML>' --apply --output '<new-corrected.dat>' --report '<new-result.json>'
+& $cli sync-schema --input '<source.dat>' --project '<project.XML-or-folder>' --output '<new-corrected.dat>' --report '<new-result.json>'
 ```
 
-The helper previews again before saving. The CLI saves to a temporary file,
-reopens and verifies it, then publishes the new DAT without overwriting an existing
-file. The helper checks input hashes and reruns comparison on the output to confirm
-zero remaining additions. If no additions are needed, `--apply` reports
-`already-complete` and creates no duplicate DAT. Report paths must also be new.
+The CLI validates the plan before writing, checks input SHA-256 hashes, writes a
+temporary DAT, reopens and verifies it, and reruns schema comparison to confirm
+zero remaining additions before publishing. It never overwrites input, output or
+report files. If no additions are needed, it reports `stage: "already-complete"`,
+`written: false` and creates no duplicate DAT. `--output` is still required for a
+non-preview run; report paths must be new too.
+
+Successful saves report `stage: "verified"`, `written: true`, `outputSha256`, and a
+successful `postcheck` with no changes. Check `inputVerification.unchanged` as well.
+Failures after valid path setup can still produce a diagnostic JSON report; a
+setup-path error does not create a report. If reporting fails after a DAT was
+saved, the result is unsuccessful and includes `reportError` and `written: true`;
+review the result rather than assuming that no output exists.
 
 Use locations the user has authorized and follow the executing environment's
 filesystem permissions. This skill does not expand that authorization.
@@ -90,8 +98,8 @@ Add an override file containing only the missing-field exceptions needed:
 
 Each entry has `table`, `name`, and `default` and/or `version`. Default is a string
 or JSON null; version is a nonnegative integer. An explicitly specified default
-wins over XML/inference. Pass `--overrides '<overrides.json>'` to the helper for
-preview and apply. Unknown/duplicate/unused overrides are errors. The helper omits
+wins over XML/inference. Pass `--overrides '<overrides.json>'` to `sync-schema` for
+preview and saving. Unknown/duplicate/unused overrides are errors. The CLI omits
 overrides during the post-save check because they apply only to missing fields.
 
 Do not silently fall back to hand-editing DAT bytes if the CLI rejects XML,

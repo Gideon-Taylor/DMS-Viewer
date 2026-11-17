@@ -155,8 +155,9 @@ with tempfile.TemporaryDirectory() as folder:
     assert any(d.get('property') == 'length' for d in result['differences'])
     assert any(d['kind'] == 'dat-only-field' for d in result['differences'])
     preserved = work / 'preserved.dat'
-    run('--output', preserved)
-    assert preserved.read_bytes() == source.read_bytes(), 'Existing fields were changed'
+    unchanged = run('--output', preserved)
+    assert unchanged['stage'] == 'already-complete' and not unchanged['written']
+    assert not preserved.exists(), 'An already-complete input created a duplicate DAT'
 
     # Literal XML defaults retain whitespace; numeric XML constants need no override.
     xml(record('TEST_REC', [key, field('COUNT', kind=2, length=5, default='0')]), version('COUNT'))

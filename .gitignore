@@ -212,7 +212,7 @@ _Pvt_Extensions/
 ModelManifest.xml
 .aider*
 
-# Python skill helpers and optional packaged runtimes (source skills stay binary-free)
+# Development Python caches and optional packaged runtimes (source skills stay binary-free)
 __pycache__/
 *.py[cod]
 skills/**/tools/dms-cli/

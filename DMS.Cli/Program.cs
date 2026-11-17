@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,91 +14,121 @@ namespace DMS_Cli
 
         private static int Main(string[] args)
         {
+            Console.OutputEncoding = new UTF8Encoding(false);
             var stdout = Console.Out;
+            if (args.Length == 0 || args.Contains("--help"))
+            {
+                stdout.WriteLine("DMS.Cli add-columns --input source.dat --changes columns.json [--output modified.dat] [--dry-run] [--report result.json]\n" +
+                    "DMS.Cli sync-schema --input source.dat --project project.XML [--overrides defaults.json] [--output modified.dat] [--dry-run] [--report result.json]\n" +
+                    "Project may also be a folder containing exactly one XML file.\n" +
+                    "Use --dry-run to preview. Saves are verified; a schema sync with no additions creates no duplicate DAT.\n" +
+                    "Defaults must be explicit: JSON null = DAT NULL, \" \" = a literal space.\n" +
+                    "Output and report must be new files. No input is modified. Python is not required.");
+                return 0;
+            }
+            var workflow = new Workflow();
             try
             {
-                if (args.Length == 0 || args.Contains("--help"))
-                {
-                    stdout.WriteLine("DMS.Cli add-columns --input source.dat --changes columns.json [--output modified.dat] [--dry-run]\n" +
-                        "DMS.Cli sync-schema --input source.dat --project project.XML [--overrides defaults.json] [--output modified.dat] [--dry-run]\n" +
-                        "JSON: {\"columns\":[{\"table\":\"RECORD\",\"name\":\"NEW_FIELD\",\"after\":\"EXISTING_FIELD\",\"type\":\"DATE\",\"length\":10,\"version\":1,\"default\":null}]}\n" +
-                        "Use after:null to insert first. Defaults must be explicit: null = DAT NULL, \" \" = a literal space.\n" +
-                        "Output must be a new file. All matching exports of a record are edited. No input file is modified.");
-                    return 0;
-                }
-                var sync = args[0] == "sync-schema";
-                if (args[0] != "add-columns" && !sync) throw new ArgumentException("Unknown command. Use --help.");
-                var options = Options(args.Skip(1).ToArray(), sync);
-                var input = Path.GetFullPath(Required(options, "--input"));
-                var plan = sync ? null : ReadPlan(Required(options, "--changes"));
-                var dryRun = options.ContainsKey("--dry-run");
-                string output = null;
-                if (options.ContainsKey("--output")) output = Path.GetFullPath(options["--output"]);
-                if (!dryRun && output == null) throw new ArgumentException("--output is required unless --dry-run is specified.");
-                if (output != null && (string.Equals(input, output, StringComparison.OrdinalIgnoreCase) || File.Exists(output)))
-                    throw new ArgumentException("Output must be a new file, different from the input.");
-
-                // The library writes diagnostic progress; reserve stdout for one JSON response.
+                // Library diagnostics go to stderr; stdout is one UTF-8 JSON result.
                 Console.SetOut(Console.Error);
-                var file = DMSReader.Read(input);
-                if (file.Endian != "LE") throw new NotSupportedException("Editing big-endian DAT files is not supported by the writer.");
-                Validate(file);
-                if (sync)
-                {
-                    string overrides;
-                    options.TryGetValue("--overrides", out overrides);
-                    var project = Path.GetFullPath(Required(options, "--project"));
-                    var result = SchemaSync.Prepare(file, project, overrides);
-                    if (result.Unresolved.Count > 0)
-                    {
-                        stdout.WriteLine(Json.Serialize(new { success = false, dryRun, input, output, project,
-                            error = "Schema sync needs explicit overrides; no output was written.",
-                            changes = result.Changes, differences = result.Differences, skipped = result.Skipped, unresolved = result.Unresolved }));
-                        return 1;
-                    }
-                    result.Apply();
-                    Validate(file);
-                    if (!dryRun) SaveVerified(file, output);
-                    stdout.WriteLine(Json.Serialize(new { success = true, dryRun, input, output, project,
-                        changes = result.Changes, differences = result.Differences, skipped = result.Skipped, unresolved = result.Unresolved }));
-                    return 0;
-                }
-                var report = new List<object>();
-                foreach (var change in plan)
-                {
-                    var tableName = String(change, "table");
-                    var name = String(change, "name");
-                    var tables = file.Tables.Where(t => t.Name == tableName).ToList();
-                    if (tables.Count == 0) throw new ArgumentException("Table not found: " + tableName);
-                    var type = EnumValue<FieldTypes>(String(change, "type"));
-                    var column = new DMSNewColumn(name, Integer(change, "version", null), Integer(change, "length", null),
-                        Integer(change, "decimalPositions", 0), (UseEditFlags)Unsigned(change, "useEdit", 0), type,
-                        EnumValue<FieldFormats>(OptionalString(change, "format", "UPPER_OR_DEFAULT")),
-                        EnumValue<GUIControls>(OptionalString(change, "gui", "DEFAULT")));
-                    if (!change.ContainsKey("after") || !change.ContainsKey("default"))
-                        throw new ArgumentException("Each column requires explicit after and default properties (null is allowed).");
-                    var after = NullableString(change, "after");
-                    var value = NullableString(change, "default");
-                    foreach (var table in tables)
-                    {
-                        var preceding = after == null ? null : table.GetColumnByName(after);
-                        if (after != null && preceding == null) throw new ArgumentException("Preceding field not found: " + tableName + "." + after);
-                        table.AddColumn(column, preceding, value);
-                    }
-                    report.Add(new { table = tableName, field = name, after, type = type.ToString(),
-                        exports = tables.Count, rows = tables.Sum(t => t.Rows.Count), defaultValue = value });
-                }
-                Validate(file);
-                if (!dryRun) SaveVerified(file, output);
-                stdout.WriteLine(Json.Serialize(new { success = true, dryRun, input, output, changes = report }));
-                return 0;
+                Execute(args, workflow);
             }
             catch (Exception ex)
             {
-                stdout.WriteLine(Json.Serialize(new { success = false, error = ex.Message }));
-                return 1;
+                workflow.Result["success"] = false;
+                workflow.Result["error"] = ex.Message;
             }
             finally { Console.SetOut(stdout); }
+            stdout.WriteLine(workflow.Complete(Json));
+            return (bool)workflow.Result["success"] ? 0 : 1;
+        }
+
+        private static void Execute(string[] args, Workflow workflow)
+        {
+            var sync = args[0] == "sync-schema";
+            if (args[0] != "add-columns" && !sync) throw new ArgumentException("Unknown command. Use --help.");
+            var options = Options(args.Skip(1).ToArray(), sync);
+            var input = Path.GetFullPath(Required(options, "--input"));
+            var dryRun = options.ContainsKey("--dry-run");
+            var output = options.ContainsKey("--output") ? Path.GetFullPath(Required(options, "--output")) : null;
+            var reportPath = options.ContainsKey("--report") ? Path.GetFullPath(Required(options, "--report")) : null;
+            if (!dryRun && output == null) throw new ArgumentException("--output is required unless --dry-run is specified.");
+            var project = sync ? Workflow.ResolveProject(Required(options, "--project")) : null;
+            var overrides = sync && options.ContainsKey("--overrides") ? Path.GetFullPath(Required(options, "--overrides")) : null;
+            var changesPath = sync ? null : Path.GetFullPath(Required(options, "--changes"));
+            workflow.Result["dryRun"] = dryRun;
+            workflow.Result["input"] = input;
+            workflow.Result["output"] = output;
+            if (sync) workflow.Result["project"] = project;
+            workflow.Initialize(new[] { input, project, overrides, changesPath }, output, reportPath);
+            var file = DMSReader.Read(input);
+            if (file.Endian != "LE") throw new NotSupportedException("Editing big-endian DAT files is not supported by the writer.");
+            Validate(file);
+            workflow.Result["stage"] = "preview";
+            if (sync)
+            {
+                var result = SchemaSync.Prepare(file, project, overrides);
+                workflow.Result["changes"] = result.Changes;
+                workflow.Result["differences"] = result.Differences;
+                workflow.Result["skipped"] = result.Skipped;
+                workflow.Result["unresolved"] = result.Unresolved;
+                if (result.Unresolved.Count > 0)
+                    throw new ArgumentException("Schema sync needs explicit overrides; no output was written.");
+                result.Apply(); // Fully validate the planned additions in memory before saving.
+                Validate(file);
+                if (!dryRun && result.Changes.Count > 0)
+                {
+                    workflow.Result["stage"] = "save";
+                    SaveVerified(file, output, reread =>
+                    {
+                        // Overrides apply only to missing fields, so omit them for this check.
+                        var check = SchemaSync.Prepare(reread, project, null);
+                        var clean = check.Changes.Count == 0 && check.Unresolved.Count == 0;
+                        workflow.Result["postcheck"] = new { success = clean, changes = check.Changes,
+                            differences = check.Differences, skipped = check.Skipped, unresolved = check.Unresolved };
+                        if (!clean) throw new InvalidDataException("Saved DAT still needs additions; no output was published.");
+                        workflow.AssertInputsUnchanged();
+                    });
+                    workflow.Saved(output);
+                }
+                else if (!dryRun) workflow.Result["stage"] = "already-complete";
+                workflow.Result["success"] = true;
+                return;
+            }
+            var additions = new List<object>();
+            workflow.Result["changes"] = additions;
+            foreach (var change in ReadPlan(changesPath))
+            {
+                var tableName = String(change, "table");
+                var name = String(change, "name");
+                var tables = file.Tables.Where(t => t.Name == tableName).ToList();
+                if (tables.Count == 0) throw new ArgumentException("Table not found: " + tableName);
+                var type = EnumValue<FieldTypes>(String(change, "type"));
+                var column = new DMSNewColumn(name, Integer(change, "version", null), Integer(change, "length", null),
+                    Integer(change, "decimalPositions", 0), (UseEditFlags)Unsigned(change, "useEdit", 0), type,
+                    EnumValue<FieldFormats>(OptionalString(change, "format", "UPPER_OR_DEFAULT")),
+                    EnumValue<GUIControls>(OptionalString(change, "gui", "DEFAULT")));
+                if (!change.ContainsKey("after") || !change.ContainsKey("default"))
+                    throw new ArgumentException("Each column requires explicit after and default properties (null is allowed).");
+                var after = NullableString(change, "after");
+                var value = NullableString(change, "default");
+                foreach (var table in tables)
+                {
+                    var preceding = after == null ? null : table.GetColumnByName(after);
+                    if (after != null && preceding == null) throw new ArgumentException("Preceding field not found: " + tableName + "." + after);
+                    table.AddColumn(column, preceding, value);
+                }
+                additions.Add(new { table = tableName, field = name, after, type = type.ToString(),
+                    exports = tables.Count, rows = tables.Sum(t => t.Rows.Count), defaultValue = value });
+            }
+            Validate(file);
+            if (!dryRun)
+            {
+                workflow.Result["stage"] = "save";
+                SaveVerified(file, output, reread => workflow.AssertInputsUnchanged());
+                workflow.Saved(output);
+            }
+            workflow.Result["success"] = true;
         }
 
         private static Dictionary<string, string> Options(string[] args, bool sync)
@@ -110,7 +139,7 @@ namespace DMS_Cli
                 var name = args[i];
                 if (result.ContainsKey(name)) throw new ArgumentException("Duplicate option: " + name);
                 if (name == "--dry-run") { result.Add(name, "true"); continue; }
-                if (name != "--input" && name != "--output" &&
+                if (name != "--input" && name != "--output" && name != "--report" &&
                     !(sync ? name == "--project" || name == "--overrides" : name == "--changes"))
                     throw new ArgumentException("Unknown option: " + name);
                 if (++i == args.Length || args[i].StartsWith("--")) throw new ArgumentException("Missing value for " + name);
@@ -208,7 +237,7 @@ namespace DMS_Cli
             }
         }
 
-        private static void SaveVerified(DMSFile file, string output)
+        private static void SaveVerified(DMSFile file, string output, Action<DMSFile> beforePublish)
         {
             // Keep the temporary file beside the destination so the final move stays on one volume.
             var temp = Path.Combine(Path.GetDirectoryName(output), ".dms-" + Guid.NewGuid().ToString("N") + ".tmp");
@@ -219,6 +248,7 @@ namespace DMS_Cli
                 Validate(reread);
                 if (!Serialize(file).SequenceEqual(Serialize(reread)))
                     throw new InvalidDataException("Saved DAT failed read-back verification; no output was published.");
+                beforePublish(reread);
                 File.Move(temp, output); // Fails rather than replacing an existing destination.
             }
             finally { if (File.Exists(temp)) File.Delete(temp); }

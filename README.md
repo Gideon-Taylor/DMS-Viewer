@@ -50,9 +50,9 @@ for literal text that happens to look like a binary value.
 
 The CLI writes one JSON result to stdout and diagnostic progress to stderr.
 Exit code 0 means success (including a dry run); 1 means failure. A dry run applies
-the complete plan in memory and validates it but creates no output. A normal run
+the complete plan in memory and validates it but creates no DAT (an optional report may be written). A normal run
 writes a temporary DAT, reopens it, compares serialized contents, and publishes
-it only after verification. Existing output files and in-place edits are refused.
+it only after verification. All inputs are fingerprinted and checked for changes. Existing output files and in-place edits are refused.
 Only little-endian DAT files are currently supported for editing.
 
 The `add-columns` command adds fields from an explicit change file. For project
@@ -120,35 +120,47 @@ overrides apply only to missing fields. A literal space is not a valid date defa
 ### Agent skill (Codex, Claude Code, or another Markdown-capable agent)
 
 The source skill is [skills/dms-sync-schema/SKILL.md](skills/dms-sync-schema/SKILL.md).
-Its instructions and Python helper require no vendor-specific SDK, plugin, account,
-or global configuration. Point your agent at that file in the checkout, or copy
-the `skills/dms-sync-schema` directory into the skill location supported by your
-agent. The source distribution does not commit compiled binaries.
+Point your agent at that file in the checkout, or copy the skill directory into
+its supported skill location. The instructions call `DMS.Cli.exe` directly;
+no Python, launcher, agent SDK, plugin, account or vendor-specific configuration
+is required for users. Windows and .NET Framework 4.8 are still required.
+Agent independence does not imply a cross-platform CLI.
 
-Build the CLI first using the procedure below. The helper finds an ancestor
-checkout's `DMS.Cli/bin/Release/DMS.Cli.exe` even when invoked from a different
-working directory. If you copied the skill outside the checkout, pass `--cli` or
-set `DMS_CLI` to the absolute executable path. Precedence is `--cli`, then
-`DMS_CLI`, then checkout discovery. Keep the EXE with its built dependencies.
-Windows and .NET Framework 4.8 are required for the current CLI; Python 3 runs
-the helper. Agent independence does not imply a cross-platform CLI.
+Build the CLI first using the procedure below, or use a built runtime distribution.
+Keep the EXE with its built dependencies. In a checkout it is at
+`DMS.Cli/bin/Release/DMS.Cli.exe`; a copied skill can use any explicit executable
+path. Compiled binaries and customer files are not committed to this repository.
 
 ```powershell
-# Preview, using the CLI built in this checkout
-python skills/dms-sync-schema/scripts/sync_dat.py --input original.dat --project project.XML
+$cli = 'path/to/DMS.Cli.exe'
 
-# Save and verify a separate corrected file, with a JSON report
-python skills/dms-sync-schema/scripts/sync_dat.py --input original.dat --project project.XML --apply --output corrected.dat --report result.json
+# Preview and save a diagnostic report
+& $cli sync-schema --input original.dat --project project.XML --dry-run --report preview.json
 
-# A skill copied outside the repository can use an explicit CLI path
-python path/to/copied-skill/scripts/sync_dat.py --cli path/to/DMS.Cli.exe --input original.dat --project project.XML
+# Save a verified corrected DAT and a combined JSON report
+& $cli sync-schema --input original.dat --project project.XML --output corrected.dat --report result.json
 ```
 
-The helper previews first, checks input hashes, then rechecks a saved copy for zero
-remaining additions. It reports an already-complete input without creating a
-duplicate. Existing metadata/order differences remain unapplied. `--overrides`
-uses the same JSON format described above. Output and report files are never
-overwritten. Customer exports, project XML and reports belong outside the repo.
+The workflow is implemented in C#: it validates the plan in memory, fingerprints
+all inputs, writes and reopens a temporary DAT, compares its serialized contents,
+and checks that schema sync requires zero remaining additions before publishing.
+It verifies input hashes before publication and again at completion. A completed
+schema-sync save reports `stage: "verified"`, `written: true`, `outputSha256` and `postcheck`.
+An already-complete sync reports `stage: "already-complete"`, `written: false` and
+creates no duplicate DAT, even when `--output` was supplied. Existing metadata/order
+differences remain unapplied.
+
+Both commands accept `--report new-result.json`. Stdout and the report are UTF-8
+JSON with input fingerprints, planned changes and verification results. In-place
+edits, existing output/report files, and paths aliasing any input are refused. Unresolved or invalid
+changes can produce a diagnostic report after setup, but do not publish a DAT.
+A report-write failure can occur after a successful DAT save; the result then has
+`success: false`, `reportError` and `written: true`. Inspect the result before
+retrying. Filesystem setup errors do not create a report.
+
+`--project` also accepts a folder containing exactly one XML file. `--overrides`
+uses the JSON format described above. Customer exports, project XML and reports
+belong outside the repo.
 
 ### Building and testing
 
@@ -158,16 +170,20 @@ targeting pack, plus NuGet CLI. From a checkout with submodules initialized:
 ```powershell
 nuget restore "DMS Viewer.sln" -NonInteractive
 msbuild "DMS Viewer.sln" /p:Configuration=Release
+```
+
+That produces the native runtime; Python is not needed to build or use it.
+Developers running the process-level integration tests additionally need Python 3:
+
+```powershell
 msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release
 DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
 python tests/cli_integration.py
 python tests/schema_sync_integration.py
-python tests/skill_integration.py
+python tests/workflow_integration.py
 ```
 
 The automated tests generate synthetic DAT data; customer exports are not fixtures.
-
-A few motivating and useful examples of how your product can be used. Spice this up with code blocks and potentially more screenshots.
 
 _For more examples and usage, please refer to the [Wiki][wiki]._
 
