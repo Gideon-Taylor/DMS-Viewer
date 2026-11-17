@@ -15,6 +15,14 @@ checks = 0
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+
+def fingerprint(result, path):
+    # .NET may expand Windows 8.3 paths (e.g. RUNNER~1) in its JSON keys.
+    hashes = [value for key, value in result['inputVerification']['sha256'].items()
+              if Path(key).samefile(path)]
+    assert len(hashes) == 1
+    return hashes[0]
+
 with tempfile.TemporaryDirectory() as folder:
     work = Path(folder) / 'données-測試'
     work.mkdir()
@@ -52,7 +60,7 @@ with tempfile.TemporaryDirectory() as folder:
     preview = run('--dry-run', '--report', preview_path, project_path=work)
     assert len(preview['changes']) == 1 and preview['changes'][0]['defaultValue'] is None
     assert preview['stage'] == 'preview' and not preview['written']
-    assert preview['inputVerification']['sha256'][str(source)] == sha(source)
+    assert fingerprint(preview, source) == sha(source)
     assert json.loads(preview_path.read_text(encoding='utf-8')) == preview
 
     output, report = work / 'corrected.dat', work / 'result.json'
@@ -89,7 +97,7 @@ with tempfile.TemporaryDirectory() as folder:
     overrides = work / 'overrides.json'
     overrides.write_text(json.dumps({'fields': [dict(table='TEST_REC', name='START_DATE', version=7)]}))
     fixed = run('--overrides', overrides, '--output', work / 'override.dat')
-    assert fixed['postcheck']['success'] and fixed['inputVerification']['sha256'][str(overrides)] == sha(overrides)
+    assert fixed['postcheck']['success'] and fingerprint(fixed, overrides) == sha(overrides)
 
     # Copy the built native runtime to a neutral folder and run it without Python/PATH.
     runtime = work / 'native-runtime'
@@ -106,7 +114,7 @@ with tempfile.TemporaryDirectory() as folder:
                           cwd=work, env=env, capture_output=True)
     manual = json.loads(proc.stdout.decode('utf-8-sig'))
     assert proc.returncode == 0 and manual['written'] and manual['stage'] == 'verified'
-    assert manual['inputVerification']['sha256'][str(plan)] == sha(plan)
+    assert fingerprint(manual, plan) == sha(plan)
     assert json.loads((work / 'manual.json').read_text(encoding='utf-8')) == manual
     checks += 1
     plan_before = plan.read_bytes()
