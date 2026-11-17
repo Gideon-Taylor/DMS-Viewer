@@ -17,3 +17,4 @@ jobs:
       - run: msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release /p:UseSharedCompilation=false /v:minimal
       - run: .\DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
       - run: python tests/cli_integration.py
+      - run: python tests/schema_sync_integration.py

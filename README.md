@@ -55,10 +55,67 @@ writes a temporary DAT, reopens it, compares serialized contents, and publishes
 it only after verification. Existing output files and in-place edits are refused.
 Only little-endian DAT files are currently supported for editing.
 
-This first version adds fields; it does not import project XML, reorder existing
-columns, or choose business defaults. Supply those decisions in the change file.
+The `add-columns` command adds fields from an explicit change file. For project
+XML comparisons and default inference, use `sync-schema` below.
 Read-back verification checks the library's round trip, not acceptance by a
 PeopleSoft database. Test imports in a suitable environment.
+
+### Sync missing columns from an App Designer project XML
+
+```powershell
+DMS.Cli\bin\Release\DMS.Cli.exe sync-schema --input original.dat --project project.XML --dry-run
+DMS.Cli\bin\Release\DMS.Cli.exe sync-schema --input original.dat --project project.XML --output corrected.dat
+```
+
+This is an **additions-only** sync. The command reads actual record definitions
+from the XML, not stored compare-status flags. It includes SQL Table records
+(`eRecType=0`), excludes names beginning `AUDIT_`, and leaves DAT records absent
+from the project unchanged. Nested subrecords are expanded recursively into their
+physical fields; missing, cyclic or duplicate expanded definitions are errors.
+The XML can contain App Designer's multiple top-level `instance` elements. DTDs
+and external entities are prohibited.
+
+New field metadata comes from the record's `RecField` entries. Field versions
+come from the corresponding standalone `FIELD` definitions (`lVersion`), or an
+explicit override; a record's version is never substituted for a field version.
+If the export omits a required field definition, add it to the project export or
+supply its version in the override file.
+
+Missing fields are inserted after their XML predecessor (or first if appropriate),
+in XML order. Existing fields are never moved, deleted or modified. Each export
+is compared separately, so a split export that already has a field is not edited
+again. Re-running against a corrected file produces no further additions.
+
+Default selection for new fields:
+
+* Use a record-field constant from `atmDefFieldName` when `atmDefRecName` is blank.
+* Otherwise use a single space for CHAR/IMAGE_REF/LONG_CHAR fields.
+* Otherwise use the DAT null sentinel for DATE/TIME/DATETIME fields.
+* Numeric/binary fields without defaults, and defaults referencing another record,
+  require explicit overrides. Dynamic default expressions are not evaluated.
+
+The JSON response contains `changes`, `differences`, `skipped`, and `unresolved`.
+Each addition includes its metadata, predecessor, row count and default source.
+`differences` reports DAT-only fields, existing-column order and existing-field
+metadata/column-definition mismatches; these are informational and left unchanged.
+An unresolved default or version returns exit code 1, includes the proposed changes
+and reasons, and prevents output. Dry runs validate the inferred changes in memory.
+Normal runs use the same no-overwrite and read-back verification as `add-columns`.
+
+Use `--overrides defaults.json` with either sync command above when needed:
+
+```json
+{
+  "fields": [
+    { "table": "EXAMPLE_REC", "name": "COUNT_FIELD", "default": "0", "version": 1 }
+  ]
+}
+```
+
+Each override requires a record name, field name, and `default` and/or `version`.
+Defaults must be strings or JSON null. Overrides take precedence over XML and
+inference. Unknown, duplicate or unused overrides fail rather than being ignored;
+overrides apply only to missing fields. A literal space is not a valid date default.
 
 ### Building and testing
 
@@ -71,6 +128,7 @@ msbuild "DMS Viewer.sln" /p:Configuration=Release
 msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release
 DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
 python tests/cli_integration.py
+python tests/schema_sync_integration.py
 ```
 
 The automated tests generate synthetic DAT data; customer exports are not fixtures.

@@ -21,15 +21,17 @@ namespace DMS_Cli
                 if (args.Length == 0 || args.Contains("--help"))
                 {
                     stdout.WriteLine("DMS.Cli add-columns --input source.dat --changes columns.json [--output modified.dat] [--dry-run]\n" +
+                        "DMS.Cli sync-schema --input source.dat --project project.XML [--overrides defaults.json] [--output modified.dat] [--dry-run]\n" +
                         "JSON: {\"columns\":[{\"table\":\"RECORD\",\"name\":\"NEW_FIELD\",\"after\":\"EXISTING_FIELD\",\"type\":\"DATE\",\"length\":10,\"version\":1,\"default\":null}]}\n" +
                         "Use after:null to insert first. Defaults must be explicit: null = DAT NULL, \" \" = a literal space.\n" +
                         "Output must be a new file. All matching exports of a record are edited. No input file is modified.");
                     return 0;
                 }
-                if (args[0] != "add-columns") throw new ArgumentException("Unknown command. Use --help.");
-                var options = Options(args.Skip(1).ToArray());
+                var sync = args[0] == "sync-schema";
+                if (args[0] != "add-columns" && !sync) throw new ArgumentException("Unknown command. Use --help.");
+                var options = Options(args.Skip(1).ToArray(), sync);
                 var input = Path.GetFullPath(Required(options, "--input"));
-                var plan = ReadPlan(Required(options, "--changes"));
+                var plan = sync ? null : ReadPlan(Required(options, "--changes"));
                 var dryRun = options.ContainsKey("--dry-run");
                 string output = null;
                 if (options.ContainsKey("--output")) output = Path.GetFullPath(options["--output"]);
@@ -42,6 +44,26 @@ namespace DMS_Cli
                 var file = DMSReader.Read(input);
                 if (file.Endian != "LE") throw new NotSupportedException("Editing big-endian DAT files is not supported by the writer.");
                 Validate(file);
+                if (sync)
+                {
+                    string overrides;
+                    options.TryGetValue("--overrides", out overrides);
+                    var project = Path.GetFullPath(Required(options, "--project"));
+                    var result = SchemaSync.Prepare(file, project, overrides);
+                    if (result.Unresolved.Count > 0)
+                    {
+                        stdout.WriteLine(Json.Serialize(new { success = false, dryRun, input, output, project,
+                            error = "Schema sync needs explicit overrides; no output was written.",
+                            changes = result.Changes, differences = result.Differences, skipped = result.Skipped, unresolved = result.Unresolved }));
+                        return 1;
+                    }
+                    result.Apply();
+                    Validate(file);
+                    if (!dryRun) SaveVerified(file, output);
+                    stdout.WriteLine(Json.Serialize(new { success = true, dryRun, input, output, project,
+                        changes = result.Changes, differences = result.Differences, skipped = result.Skipped, unresolved = result.Unresolved }));
+                    return 0;
+                }
                 var report = new List<object>();
                 foreach (var change in plan)
                 {
@@ -80,7 +102,7 @@ namespace DMS_Cli
             finally { Console.SetOut(stdout); }
         }
 
-        private static Dictionary<string, string> Options(string[] args)
+        private static Dictionary<string, string> Options(string[] args, bool sync)
         {
             var result = new Dictionary<string, string>();
             for (var i = 0; i < args.Length; i++)
@@ -88,7 +110,9 @@ namespace DMS_Cli
                 var name = args[i];
                 if (result.ContainsKey(name)) throw new ArgumentException("Duplicate option: " + name);
                 if (name == "--dry-run") { result.Add(name, "true"); continue; }
-                if (name != "--input" && name != "--output" && name != "--changes") throw new ArgumentException("Unknown option: " + name);
+                if (name != "--input" && name != "--output" &&
+                    !(sync ? name == "--project" || name == "--overrides" : name == "--changes"))
+                    throw new ArgumentException("Unknown option: " + name);
                 if (++i == args.Length || args[i].StartsWith("--")) throw new ArgumentException("Missing value for " + name);
                 result.Add(name, args[i]);
             }
