@@ -211,3 +211,8 @@ GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
 .aider*
+
+# Development Python caches and optional packaged runtimes (source skills stay binary-free)
+__pycache__/
+*.py[cod]
+skills/**/tools/dms-cli/

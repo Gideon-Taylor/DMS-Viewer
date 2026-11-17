@@ -17,7 +17,173 @@ Alternatively to run from source, clone the repository and open in Visual Studio
 
 ## Usage example
 
-A few motivating and useful examples of how your product can be used. Spice this up with code blocks and potentially more screenshots.
+### Command-line column editing (.NET Framework 4.8, Windows)
+
+Build the solution in Release mode, then use `DMS.Cli\bin\Release\DMS.Cli.exe`.
+The CLI and desktop viewer share DMSLib; no GUI session is required.
+
+```powershell
+DMS.Cli\bin\Release\DMS.Cli.exe add-columns --input original.dat --changes columns.json --dry-run
+DMS.Cli\bin\Release\DMS.Cli.exe add-columns --input original.dat --changes columns.json --output modified.dat
+```
+
+See [examples/add-columns.json](examples/add-columns.json) for a generic change file.
+Each entry requires `table`, `name`, `after`, `type`, `length`, `version`, and
+`default`. `after: null` inserts first; otherwise it names the preceding field.
+Entries run in order, so later entries can follow fields created earlier.
+All exports of a matching record are changed, including split WHERE exports.
+Already-existing columns and missing tables/anchors are errors, not silent skips.
+
+`type` is a DMSLib FieldTypes name: `CHAR`, `LONG_CHAR`, `NUMBER`, `SIGNED_NUMBER`,
+`DATE`, `TIME`, `DATETIME`, `IMG_OR_ATTACH`, or `IMAGE_REF`.
+Optional settings are `decimalPositions` (0), `useEdit` (0, unsigned 32-bit),
+`format` (`UPPER_OR_DEFAULT`), and `gui` (`DEFAULT`). Enum settings use names,
+not numeric IDs. Match metadata to the target record definition.
+
+Defaults are explicit: JSON `null` produces the DAT zero-byte null sentinel
+(`B(AA)`), while `" "` is a literal space. Empty character defaults and null
+character/numeric defaults are rejected. Date/time defaults may be null or use
+`yyyy-MM-dd`, `HH.mm.ss.ffffff`, or `yyyy-MM-dd-HH.mm.ss.ffffff` respectively.
+Numbers use a decimal point and must fit the declared precision/scale. The legacy
+`B{HEX}` syntax supplies binary bytes (for example `B{00}`); do not use that syntax
+for literal text that happens to look like a binary value.
+
+The CLI writes one JSON result to stdout and diagnostic progress to stderr.
+Exit code 0 means success (including a dry run); 1 means failure. A dry run applies
+the complete plan in memory and validates it but creates no DAT (an optional report may be written). A normal run
+writes a temporary DAT, reopens it, compares serialized contents, and publishes
+it only after verification. All inputs are fingerprinted and checked for changes. Existing output files and in-place edits are refused.
+Only little-endian DAT files are currently supported for editing.
+
+The `add-columns` command adds fields from an explicit change file. For project
+XML comparisons and default inference, use `sync-schema` below.
+Read-back verification checks the library's round trip, not acceptance by a
+PeopleSoft database. Test imports in a suitable environment.
+
+### Sync missing columns from an App Designer project XML
+
+```powershell
+DMS.Cli\bin\Release\DMS.Cli.exe sync-schema --input original.dat --project project.XML --dry-run
+DMS.Cli\bin\Release\DMS.Cli.exe sync-schema --input original.dat --project project.XML --output corrected.dat
+```
+
+This is an **additions-only** sync. The command reads actual record definitions
+from the XML, not stored compare-status flags. It includes SQL Table records
+(`eRecType=0`), excludes names beginning `AUDIT_`, and leaves DAT records absent
+from the project unchanged. Nested subrecords are expanded recursively into their
+physical fields; missing, cyclic or duplicate expanded definitions are errors.
+The XML can contain App Designer's multiple top-level `instance` elements. DTDs
+and external entities are prohibited.
+
+New field metadata comes from the record's `RecField` entries. Field versions
+come from the corresponding standalone `FIELD` definitions (`lVersion`), or an
+explicit override; a record's version is never substituted for a field version.
+If the export omits a required field definition, add it to the project export or
+supply its version in the override file.
+
+Missing fields are inserted after their XML predecessor (or first if appropriate),
+in XML order. Existing fields are never moved, deleted or modified. Each export
+is compared separately, so a split export that already has a field is not edited
+again. Re-running against a corrected file produces no further additions.
+
+Default selection for new fields:
+
+* Use a record-field constant from `atmDefFieldName` when `atmDefRecName` is blank.
+* Otherwise use a single space for CHAR/IMAGE_REF/LONG_CHAR fields.
+* Otherwise use the DAT null sentinel for DATE/TIME/DATETIME fields.
+* Numeric/binary fields without defaults, and defaults referencing another record,
+  require explicit overrides. Dynamic default expressions are not evaluated.
+
+The JSON response contains `changes`, `differences`, `skipped`, and `unresolved`.
+Each addition includes its metadata, predecessor, row count and default source.
+`differences` reports DAT-only fields, existing-column order and existing-field
+metadata/column-definition mismatches; these are informational and left unchanged.
+An unresolved default or version returns exit code 1, includes the proposed changes
+and reasons, and prevents output. Dry runs validate the inferred changes in memory.
+Normal runs use the same no-overwrite and read-back verification as `add-columns`.
+
+Use `--overrides defaults.json` with either sync command above when needed:
+
+```json
+{
+  "fields": [
+    { "table": "EXAMPLE_REC", "name": "COUNT_FIELD", "default": "0", "version": 1 }
+  ]
+}
+```
+
+Each override requires a record name, field name, and `default` and/or `version`.
+Defaults must be strings or JSON null. Overrides take precedence over XML and
+inference. Unknown, duplicate or unused overrides fail rather than being ignored;
+overrides apply only to missing fields. A literal space is not a valid date default.
+
+### Agent skill (Codex, Claude Code, or another Markdown-capable agent)
+
+The source skill is [skills/dms-sync-schema/SKILL.md](skills/dms-sync-schema/SKILL.md).
+Point your agent at that file in the checkout, or copy the skill directory into
+its supported skill location. The instructions call `DMS.Cli.exe` directly;
+no Python, launcher, agent SDK, plugin, account or vendor-specific configuration
+is required for users. Windows and .NET Framework 4.8 are still required.
+Agent independence does not imply a cross-platform CLI.
+
+Build the CLI first using the procedure below, or use a built runtime distribution.
+Keep the EXE with its built dependencies. In a checkout it is at
+`DMS.Cli/bin/Release/DMS.Cli.exe`; a copied skill can use any explicit executable
+path. Compiled binaries and customer files are not committed to this repository.
+
+```powershell
+$cli = 'path/to/DMS.Cli.exe'
+
+# Preview and save a diagnostic report
+& $cli sync-schema --input original.dat --project project.XML --dry-run --report preview.json
+
+# Save a verified corrected DAT and a combined JSON report
+& $cli sync-schema --input original.dat --project project.XML --output corrected.dat --report result.json
+```
+
+The workflow is implemented in C#: it validates the plan in memory, fingerprints
+all inputs, writes and reopens a temporary DAT, compares its serialized contents,
+and checks that schema sync requires zero remaining additions before publishing.
+It verifies input hashes before publication and again at completion. A completed
+schema-sync save reports `stage: "verified"`, `written: true`, `outputSha256` and `postcheck`.
+An already-complete sync reports `stage: "already-complete"`, `written: false` and
+creates no duplicate DAT, even when `--output` was supplied. Existing metadata/order
+differences remain unapplied.
+
+Both commands accept `--report new-result.json`. Stdout and the report are UTF-8
+JSON with input fingerprints, planned changes and verification results. In-place
+edits, existing output/report files, and paths aliasing any input are refused. Unresolved or invalid
+changes can produce a diagnostic report after setup, but do not publish a DAT.
+A report-write failure can occur after a successful DAT save; the result then has
+`success: false`, `reportError` and `written: true`. Inspect the result before
+retrying. Filesystem setup errors do not create a report.
+
+`--project` also accepts a folder containing exactly one XML file. `--overrides`
+uses the JSON format described above. Customer exports, project XML and reports
+belong outside the repo.
+
+### Building and testing
+
+Install Visual Studio Build Tools with .NET desktop build tools and the .NET 4.8
+targeting pack, plus NuGet CLI. From a checkout with submodules initialized:
+
+```powershell
+nuget restore "DMS Viewer.sln" -NonInteractive
+msbuild "DMS Viewer.sln" /p:Configuration=Release
+```
+
+That produces the native runtime; Python is not needed to build or use it.
+Developers running the process-level integration tests additionally need Python 3:
+
+```powershell
+msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release
+DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
+python tests/cli_integration.py
+python tests/schema_sync_integration.py
+python tests/workflow_integration.py
+```
+
+The automated tests generate synthetic DAT data; customer exports are not fixtures.
 
 _For more examples and usage, please refer to the [Wiki][wiki]._
 

@@ -1,0 +1,21 @@
+name: DAT editor tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v2
+      - uses: NuGet/setup-nuget@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: nuget restore "DMS Viewer.sln" -NonInteractive
+      - run: msbuild "DMS Viewer.sln" /p:Configuration=Release /p:UseSharedCompilation=false /v:minimal
+      - run: msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release /p:UseSharedCompilation=false /v:minimal
+      - run: .\DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
+      - run: python tests/cli_integration.py
+      - run: python tests/schema_sync_integration.py
+      - run: python tests/workflow_integration.py

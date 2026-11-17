@@ -1,0 +1,25 @@
+{
+  "columns": [
+    {
+      "table": "EXAMPLE_REC",
+      "name": "ACTIVE_FLAG",
+      "after": "EXAMPLE_ID",
+      "type": "CHAR",
+      "length": 1,
+      "version": 1,
+      "useEdit": 0,
+      "format": "UPPER_OR_DEFAULT",
+      "gui": "DEFAULT",
+      "default": "Y"
+    },
+    {
+      "table": "EXAMPLE_REC",
+      "name": "START_DATE",
+      "after": "ACTIVE_FLAG",
+      "type": "DATE",
+      "length": 10,
+      "version": 1,
+      "default": null
+    }
+  ]
+}
