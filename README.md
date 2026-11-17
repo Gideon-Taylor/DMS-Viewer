@@ -17,6 +17,64 @@ Alternatively to run from source, clone the repository and open in Visual Studio
 
 ## Usage example
 
+### Command-line column editing (.NET Framework 4.8, Windows)
+
+Build the solution in Release mode, then use `DMS.Cli\bin\Release\DMS.Cli.exe`.
+The CLI and desktop viewer share DMSLib; no GUI session is required.
+
+```powershell
+DMS.Cli\bin\Release\DMS.Cli.exe add-columns --input original.dat --changes columns.json --dry-run
+DMS.Cli\bin\Release\DMS.Cli.exe add-columns --input original.dat --changes columns.json --output modified.dat
+```
+
+See [examples/add-columns.json](examples/add-columns.json) for a generic change file.
+Each entry requires `table`, `name`, `after`, `type`, `length`, `version`, and
+`default`. `after: null` inserts first; otherwise it names the preceding field.
+Entries run in order, so later entries can follow fields created earlier.
+All exports of a matching record are changed, including split WHERE exports.
+Already-existing columns and missing tables/anchors are errors, not silent skips.
+
+`type` is a DMSLib FieldTypes name: `CHAR`, `LONG_CHAR`, `NUMBER`, `SIGNED_NUMBER`,
+`DATE`, `TIME`, `DATETIME`, `IMG_OR_ATTACH`, or `IMAGE_REF`.
+Optional settings are `decimalPositions` (0), `useEdit` (0, unsigned 32-bit),
+`format` (`UPPER_OR_DEFAULT`), and `gui` (`DEFAULT`). Enum settings use names,
+not numeric IDs. Match metadata to the target record definition.
+
+Defaults are explicit: JSON `null` produces the DAT zero-byte null sentinel
+(`B(AA)`), while `" "` is a literal space. Empty character defaults and null
+character/numeric defaults are rejected. Date/time defaults may be null or use
+`yyyy-MM-dd`, `HH.mm.ss.ffffff`, or `yyyy-MM-dd-HH.mm.ss.ffffff` respectively.
+Numbers use a decimal point and must fit the declared precision/scale. The legacy
+`B{HEX}` syntax supplies binary bytes (for example `B{00}`); do not use that syntax
+for literal text that happens to look like a binary value.
+
+The CLI writes one JSON result to stdout and diagnostic progress to stderr.
+Exit code 0 means success (including a dry run); 1 means failure. A dry run applies
+the complete plan in memory and validates it but creates no output. A normal run
+writes a temporary DAT, reopens it, compares serialized contents, and publishes
+it only after verification. Existing output files and in-place edits are refused.
+Only little-endian DAT files are currently supported for editing.
+
+This first version adds fields; it does not import project XML, reorder existing
+columns, or choose business defaults. Supply those decisions in the change file.
+Read-back verification checks the library's round trip, not acceptance by a
+PeopleSoft database. Test imports in a suitable environment.
+
+### Building and testing
+
+Install Visual Studio Build Tools with .NET desktop build tools and the .NET 4.8
+targeting pack, plus NuGet CLI. From a checkout with submodules initialized:
+
+```powershell
+nuget restore "DMS Viewer.sln" -NonInteractive
+msbuild "DMS Viewer.sln" /p:Configuration=Release
+msbuild DMSLib\DMSLib.Tests\DMSLib.Tests.csproj /p:Configuration=Release
+DMSLib\DMSLib.Tests\bin\Release\DMSLib.Tests.exe
+python tests/cli_integration.py
+```
+
+The automated tests generate synthetic DAT data; customer exports are not fixtures.
+
 A few motivating and useful examples of how your product can be used. Spice this up with code blocks and potentially more screenshots.
 
 _For more examples and usage, please refer to the [Wiki][wiki]._

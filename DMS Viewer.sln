@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36401.2 d17.14
@@ -7,12 +7,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS Viewer", "DMS Viewer\DM
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMSLib", "DMSLib\DMSLib\DMSLib.csproj", "{F9247363-0F85-4A31-95EE-4743CFBC8CF4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS.Cli", "DMS.Cli\DMS.Cli.csproj", "{E0D84A39-5A8B-44C3-9315-BB4793989E0C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E0D84A39-5A8B-44C3-9315-BB4793989E0C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0D84A39-5A8B-44C3-9315-BB4793989E0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0D84A39-5A8B-44C3-9315-BB4793989E0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0D84A39-5A8B-44C3-9315-BB4793989E0C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1D29CD27-3EBD-4B93-945A-9EE9F0D72D20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1D29CD27-3EBD-4B93-945A-9EE9F0D72D20}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1D29CD27-3EBD-4B93-945A-9EE9F0D72D20}.Release|Any CPU.ActiveCfg = Release|Any CPU
